@@ -3,6 +3,8 @@
 A computer graphics project developed for the course
 DAT205 Advanced Computer Graphics at Chalmers University of Technology.
 
+![alt text](images/thumbnail.png)
+
 <!--toc:start-->
 - [Project Overview](#project-overview)
 - [Features](#features)
