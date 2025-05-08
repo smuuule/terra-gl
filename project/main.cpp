@@ -14,6 +14,8 @@ extern "C" _declspec(dllexport) unsigned int NvOptimusEnablement = 0x00000001;
 #include <glm/gtx/transform.hpp>
 using namespace glm;
 
+#include "stb_image.h"
+
 #include "hdr.h"
 #include "terrain.h"
 #include <Model.h>
@@ -54,25 +56,21 @@ float cameraSpeed = 10.f;
 vec3 worldUp(0.0f, 1.0f, 0.0f);
 
 ///////////////////////////////////////////////////////////////////////////////
-// Terrain parameters.
-///////////////////////////////////////////////////////////////////////////////
-TerrainParams terrainParams;
-
-///////////////////////////////////////////////////////////////////////////////
 // Models
 ///////////////////////////////////////////////////////////////////////////////
 Terrain *terrain = nullptr;
 
-mat4 terrainModelMatrix; // Terrain model matrix
+TerrainParams terrainParams;
+mat4 terrainModelMatrix;
 
-// Add these global variables for terrain height thresholds
 float waterLevel = -2.0f;
-float sandLevel = -0.9f;
-float grassLevel = 4.0f;
-float rockLevel = 14.0f;
+float sandLevel = -1.5f;
+float grassLevel = 1.2f;
+float rockLevel = 3.0f;
+float slopeThreshold = 0.8f;
 
-// Add a GLuint to store the heightmap texture
 GLuint heightmapTexture;
+GLuint waterTexture, sandTexture, grassTexture, rockTexture, snowTexture;
 
 void loadShaders(bool is_reload)
 {
@@ -103,28 +101,97 @@ void initialize()
   ///////////////////////////////////////////////////////////////////////
   loadShaders(false);
 
-  // Generate terrain using the Terrain class
-  terrainParams.size = 100;
+  ///////////////////////////////////////////////////////////////////////
+  //		Load Terrain Textures
+  ///////////////////////////////////////////////////////////////////////
+  // Load and setup terrain textures
+  glGenTextures(1, &waterTexture);
+  glGenTextures(1, &sandTexture);
+  glGenTextures(1, &grassTexture);
+  glGenTextures(1, &rockTexture);
+  glGenTextures(1, &snowTexture);
+
+  // Load water texture
+  int width, height, channels;
+  unsigned char *data = stbi_load("../scenes/textures/water.png", &width, &height, &channels, 0);
+  if (data)
+  {
+    glBindTexture(GL_TEXTURE_2D, waterTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    stbi_image_free(data);
+  }
+
+  // Load sand texture
+  data = stbi_load("../scenes/textures/sand.jpg", &width, &height, &channels, 0);
+  if (data)
+  {
+    glBindTexture(GL_TEXTURE_2D, sandTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    stbi_image_free(data);
+  }
+
+  // Load grass texture
+  data = stbi_load("../scenes/textures/grass.jpg", &width, &height, &channels, 0);
+  if (data)
+  {
+    glBindTexture(GL_TEXTURE_2D, grassTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    stbi_image_free(data);
+  }
+
+  // Load rock texture
+  data = stbi_load("../scenes/textures/rock.jpg", &width, &height, &channels, 0);
+  if (data)
+  {
+    glBindTexture(GL_TEXTURE_2D, rockTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    stbi_image_free(data);
+  }
+
+  // Load snow texture
+  data = stbi_load("../scenes/textures/snow.jpg", &width, &height, &channels, 0);
+  if (data)
+  {
+    glBindTexture(GL_TEXTURE_2D, snowTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    stbi_image_free(data);
+  }
+
+  // Set texture parameters for all terrain textures
+  GLuint textures[] = {waterTexture, sandTexture, grassTexture, rockTexture, snowTexture};
+  for (GLuint tex : textures)
+  {
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  }
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  terrainParams.size = 500;
   terrainParams.scale = 1.0f;
-  terrainParams.heightScale = 1.0f;
-  terrainParams.noiseOctaves = 4;
-  terrainParams.seed = std::rand();
+  terrainParams.heightScale = 5.0f;
+  terrainParams.noiseOctaves = 8;
+  terrainParams.seed = rand();
   terrain = new Terrain(terrainParams);
 
   terrainModelMatrix = translate(
-      vec3(0.0f, -5.0f, 0.0f)); // Position the terrain below the landing pad
+      vec3(0.0f, 0.0f, 0.0f));
 
-  // Generate and upload the heightmap texture
   glGenTextures(1, &heightmapTexture);
   glBindTexture(GL_TEXTURE_2D, heightmapTexture);
 
-  // Create a normalized version of the heightmap for display
   std::vector<float> normalizedHeightmap;
   normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3); // * 3 for RGB
   float minHeight = FLT_MAX;
   float maxHeight = -FLT_MAX;
 
-  // First find min and max heights
   auto heightMap = terrain->getHeightMap();
   for (const auto &row : heightMap)
   {
@@ -135,20 +202,17 @@ void initialize()
     }
   }
 
-  // Normalize the heightmap data to 0-1 range and convert to RGB
   for (const auto &row : heightMap)
   {
     for (float height : row)
     {
       float normalizedHeight = (height - minHeight) / (maxHeight - minHeight);
-      // Add the same value for R, G, and B to create grayscale
-      normalizedHeightmap.push_back(normalizedHeight); // R
-      normalizedHeightmap.push_back(normalizedHeight); // G
-      normalizedHeightmap.push_back(normalizedHeight); // B
+      normalizedHeightmap.push_back(normalizedHeight);
+      normalizedHeightmap.push_back(normalizedHeight);
+      normalizedHeightmap.push_back(normalizedHeight);
     }
   }
 
-  // Upload the normalized heightmap data to the texture
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size, terrainParams.size, 0, GL_RGB, GL_FLOAT, normalizedHeightmap.data());
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -197,6 +261,30 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix,
   labhelper::setUniformSlow(currentShaderProgram, "environment_multiplier",
                             environment_multiplier);
 
+  // Bind terrain textures
+  glActiveTexture(GL_TEXTURE10);
+  glBindTexture(GL_TEXTURE_2D, waterTexture);
+  glUniform1i(glGetUniformLocation(currentShaderProgram, "waterTexture"), 10);
+
+  glActiveTexture(GL_TEXTURE11);
+  glBindTexture(GL_TEXTURE_2D, sandTexture);
+  glUniform1i(glGetUniformLocation(currentShaderProgram, "sandTexture"), 11);
+
+  glActiveTexture(GL_TEXTURE12);
+  glBindTexture(GL_TEXTURE_2D, grassTexture);
+  glUniform1i(glGetUniformLocation(currentShaderProgram, "grassTexture"), 12);
+
+  glActiveTexture(GL_TEXTURE13);
+  glBindTexture(GL_TEXTURE_2D, rockTexture);
+  glUniform1i(glGetUniformLocation(currentShaderProgram, "rockTexture"), 13);
+
+  glActiveTexture(GL_TEXTURE14);
+  glBindTexture(GL_TEXTURE_2D, snowTexture);
+  glUniform1i(glGetUniformLocation(currentShaderProgram, "snowTexture"), 14);
+
+  // Set texture scale
+  labhelper::setUniformSlow(currentShaderProgram, "textureScale", 10.0f);
+
   // camera
   labhelper::setUniformSlow(currentShaderProgram, "viewInverse",
                             inverse(viewMatrix));
@@ -206,6 +294,7 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix,
   labhelper::setUniformSlow(currentShaderProgram, "sandLevel", sandLevel);
   labhelper::setUniformSlow(currentShaderProgram, "grassLevel", grassLevel);
   labhelper::setUniformSlow(currentShaderProgram, "rockLevel", rockLevel);
+  labhelper::setUniformSlow(currentShaderProgram, "slopeThreshold", slopeThreshold);
 
   // Render terrain
   labhelper::setUniformSlow(currentShaderProgram, "modelViewProjectionMatrix",
@@ -215,7 +304,6 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix,
   labhelper::setUniformSlow(
       currentShaderProgram, "normalMatrix",
       inverse(transpose(viewMatrix * terrainModelMatrix)));
-  // Set the model matrix for world space position calculation
   labhelper::setUniformSlow(currentShaderProgram, "modelMatrix",
                             terrainModelMatrix);
 
@@ -384,47 +472,49 @@ bool handleEvents()
 ///////////////////////////////////////////////////////////////////////////////
 void gui()
 {
+  ImGui::SetNextWindowSize(ImVec2(800, 0), ImGuiCond_FirstUseEver); // Set initial window width to 400 pixels
   ImGui::Begin("Controls");
   ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
               1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
   ImGui::SliderFloat("Environment Multiplier", &environment_multiplier, 0.0f,
                      10.0f);
 
-  // Terrain controls
   ImGui::Separator();
-  ImGui::Text("Terrain Controls");
-  ImGui::SliderInt("Terrain Size", &terrainParams.size, 10, 100);
-  ImGui::SliderFloat("Terrain Scale", &terrainParams.scale, 0.1f, 10.0f);
-  ImGui::SliderFloat("Terrain Height Scale",
-                     &terrainParams.heightScale, 0.1f, 10.0f);
 
-  // Add height threshold controls
-  ImGui::Separator();
-  ImGui::Text("Terrain Height Thresholds");
+  ImGui::Text("Terrain Thresholds");
   ImGui::SliderFloat("Water Level", &waterLevel, -10.0f, 0.0f);
   ImGui::SliderFloat("Sand Level", &sandLevel, waterLevel, 5.0f);
   ImGui::SliderFloat("Grass Level", &grassLevel, sandLevel, 10.0f);
   ImGui::SliderFloat("Rock Level", &rockLevel, grassLevel, 20.0f);
+  ImGui::SliderFloat("Slope Threshold", &slopeThreshold, 0.0f, 1.0f);
 
-  // Display the heightmap in the GUI
   ImGui::Separator();
-  ImGui::Text("Heightmap Preview");
-  ImGui::Image((void *)(intptr_t)heightmapTexture, ImVec2(100, 100));
 
-  // Update the heightmap texture when regenerating the terrain
+  ImGui::Text("Terrain Generation");
+  ImGui::SliderInt("Terrain Size", &terrainParams.size, 100, 1000);
+  ImGui::SliderFloat("Terrain Scale", &terrainParams.scale, 0.1f, 10.0f);
+  ImGui::SliderFloat("Terrain Height Scale",
+                     &terrainParams.heightScale, 0.1f, 10.0f);
+  ImGui::Text("Noise Map");
+  ImGui::Image((void *)(intptr_t)heightmapTexture, ImVec2(100, 100));
+  ImGui::SliderFloat("Noise Amplitude", &terrainParams.amplitude, 0.1f, 5.0f);
+  ImGui::SliderFloat("Noise Frequency", &terrainParams.frequency, 0.001f, 0.2f);
+  ImGui::InputInt("Seed", (int *)&terrainParams.seed);
+  if (ImGui::Button("Random Seed"))
+  {
+    terrainParams.seed = rand();
+  }
+
   if (ImGui::Button("Generate New Terrain"))
   {
     delete terrain;
-    terrainParams.seed = std::rand();
     terrain = new Terrain(terrainParams);
 
-    // Create a normalized version of the heightmap for display
     std::vector<float> normalizedHeightmap;
-    normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3); // * 3 for RGB
+    normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3);
     float minHeight = FLT_MAX;
     float maxHeight = -FLT_MAX;
 
-    // First find min and max heights
     auto heightMap = terrain->getHeightMap();
     for (const auto &row : heightMap)
     {
@@ -435,20 +525,17 @@ void gui()
       }
     }
 
-    // Normalize the heightmap data to 0-1 range and convert to RGB
     for (const auto &row : heightMap)
     {
       for (float height : row)
       {
         float normalizedHeight = (height - minHeight) / (maxHeight - minHeight);
-        // Add the same value for R, G, and B to create grayscale
-        normalizedHeightmap.push_back(normalizedHeight); // R
-        normalizedHeightmap.push_back(normalizedHeight); // G
-        normalizedHeightmap.push_back(normalizedHeight); // B
+        normalizedHeightmap.push_back(normalizedHeight);
+        normalizedHeightmap.push_back(normalizedHeight);
+        normalizedHeightmap.push_back(normalizedHeight);
       }
     }
 
-    // Update the heightmap texture
     glBindTexture(GL_TEXTURE_2D, heightmapTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size, terrainParams.size, 0, GL_RGB, GL_FLOAT, normalizedHeightmap.data());
     glBindTexture(GL_TEXTURE_2D, 0);

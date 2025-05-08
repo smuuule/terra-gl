@@ -54,34 +54,38 @@ uniform vec2 texSize;
 ///////////////////////////////////////////////////////////////////////////////
 layout(location = 0) out vec4 fragmentColor;
 
-// Add a uniform for the colormap texture
 layout(binding = 9) uniform sampler2D colormap;
 
-// Add uniforms for color control
 uniform float waterLevel;
 uniform float sandLevel;
 uniform float grassLevel;
 uniform float rockLevel;
+uniform float slopeThreshold = 0.7;
 
-uniform vec3 waterColor = vec3(0.1, 0.2, 0.8);
-uniform vec3 sandColor = vec3(0.85, 0.8, 0.5);
-uniform vec3 grassColor = vec3(0.2, 0.6, 0.2);
-uniform vec3 rockColor = vec3(0.6, 0.6, 0.6);
-uniform vec3 snowColor = vec3(1.0, 1.0, 1.0);
+layout(binding = 10) uniform sampler2D waterTexture;
+layout(binding = 11) uniform sampler2D sandTexture;
+layout(binding = 12) uniform sampler2D grassTexture;
+layout(binding = 13) uniform sampler2D rockTexture;
+layout(binding = 14) uniform sampler2D snowTexture;
 
-// Fog parameters
-uniform vec3 fogColor = vec3(0.5, 0.6, 0.7);
-uniform float fogDensity = 0.001;  // Reduced density for more distant fog
-uniform float fogStart = 100.0;    // Distance at which fog starts
+uniform float textureScale = 10.0;
 
-// Function to calculate exponential fog
-vec3 applyFog(vec3 color, float distance) {
-    // Only apply fog beyond the start distance
-    if (distance < fogStart) {
-        return color;
-    }
-    float fogFactor = exp(-fogDensity * (distance - fogStart));
-    return mix(fogColor, color, fogFactor);
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+}
+
+float noise(vec2 st) {
+    vec2 i = floor(st);
+    vec2 f = fract(st);
+    
+    float a = random(i);
+    float b = random(i + vec2(1.0, 0.0));
+    float c = random(i + vec2(0.0, 1.0));
+    float d = random(i + vec2(1.0, 1.0));
+
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
 }
 
 vec3 calculateDirectIllumiunation(vec3 wo, vec3 n, vec3 base_color)
@@ -144,23 +148,66 @@ vec3 calculateIndirectIllumination(vec3 wo, vec3 n, vec3 base_color)
     return indirect_illum;
 }
 
-// Add a function to smoothly interpolate between colors
-vec3 getTerrainColor(float height) {
-    // Add some smoothing to avoid sharp transitions
-    float smoothing = 0.4;
+vec3 getTriplanarMapping(vec3 normal, vec3 position, sampler2D tex, float scale) {
+    vec3 blendWeights = abs(normal);
+    blendWeights = blendWeights / (blendWeights.x + blendWeights.y + blendWeights.z);
     
-    // Calculate blend factors using world height
+    // Add noise to position
+    vec3 noiseOffset = vec3(
+        noise(position.yz * 0.1),
+        noise(position.xz * 0.1),
+        noise(position.xy * 0.1)
+    ) * 0.4; // Adjust noise strength here
+    
+    vec3 scaledPosition = (position + noiseOffset) / scale;
+    
+    vec3 colorX = mix(
+        texture(tex, scaledPosition.yz).rgb,
+        texture(tex, scaledPosition.yz * 2.0).rgb,
+        0.7
+    );
+    vec3 colorY = mix(
+        texture(tex, scaledPosition.xz).rgb,
+        texture(tex, scaledPosition.xz * 2.0).rgb,
+        0.7
+    );
+    vec3 colorZ = mix(
+        texture(tex, scaledPosition.xy).rgb,
+        texture(tex, scaledPosition.xy * 2.0).rgb,
+        0.7
+    );
+    
+    return colorX * blendWeights.x + colorY * blendWeights.y + colorZ * blendWeights.z;
+}
+
+vec3 getTerrainColor(float height) {
+    
+    float slope = 1.0 - abs(dot(normalize(viewSpaceNormal), vec3(0.0, 1.0, 0.0)));
+    
+    vec3 worldPos = vec3(viewInverse * vec4(viewSpacePosition, 1.0));
+    
+    vec3 waterTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, waterTexture, textureScale);
+    vec3 sandTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, sandTexture, textureScale);
+    vec3 grassTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, grassTexture, textureScale);
+    vec3 rockTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, rockTexture, textureScale);
+    vec3 snowTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, snowTexture, textureScale);
+    
+    float smoothing = 0.4;
     float waterBlend = smoothstep(waterLevel - smoothing, waterLevel + smoothing, height);
     float sandBlend = smoothstep(sandLevel - smoothing, sandLevel + smoothing, height);
     float grassBlend = smoothstep(grassLevel - smoothing, grassLevel + smoothing, height);
     float rockBlend = smoothstep(rockLevel - smoothing, rockLevel + smoothing, height);
     
-    // Mix colors based on height
-    vec3 color = waterColor;
-    color = mix(color, sandColor, waterBlend);
-    color = mix(color, grassColor, sandBlend);
-    color = mix(color, rockColor, grassBlend);
-    color = mix(color, snowColor, rockBlend);
+    float slopeBlend = smoothstep(slopeThreshold - 0.1, slopeThreshold + 0.1, slope);
+    
+    vec3 color = waterTex;
+    
+    color = mix(color, sandTex, waterBlend);
+    color = mix(color, grassTex, sandBlend);
+    color = mix(color, rockTex, grassBlend);
+    color = mix(color, snowTex, rockBlend);
+    
+    color = mix(color, rockTex, slopeBlend);
     
     return color;
 }
@@ -170,7 +217,6 @@ void main()
     vec3 wo = -normalize(viewSpacePosition);
     vec3 n = normalize(viewSpaceNormal);
 
-    // Use worldHeight instead of viewSpacePosition.y
     vec3 terrainColor = getTerrainColor(worldHeight);
 
     // Direct illumination
@@ -189,12 +235,8 @@ void main()
     // }
     vec3 shading = direct_illumination_term + indirect_illumination_term; // + emission_term;
 
-    // Calculate distance from camera for fog
     float distance = length(viewSpacePosition);
-    
-    // Apply fog to the final color
-    vec3 finalColor = applyFog(shading, distance);
 
-    fragmentColor = vec4(finalColor, 1.0);
+    fragmentColor = vec4(shading, 1.0);
     return;
 }

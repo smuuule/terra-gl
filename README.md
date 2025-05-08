@@ -27,7 +27,9 @@ written in C++ using OpenGL.
 - [x] Camera controls
 - [x] Basic lighting and shading
 - [x] Height-based color mapping
-- [ ] Blended texture height/slope mapping
+- [x] Slope-based color mapping
+- [x] Triplanar texture mapping (has a lot of stretching)
+- [ ] Texture mapping without stretching
 - [ ] Water reflection and refraction (simulation?)
 - [ ] Vegetation placement and rendering
 - [ ] Day/night cycle with dynamic lighting
