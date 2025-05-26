@@ -9,6 +9,7 @@ in vec2 texCoord;
 uniform mat4 inv_PV;
 uniform vec3 camera_pos;
 uniform float environment_multiplier;
+uniform vec3 sunDirection;
 #define PI 3.14159265359
 
 void main()
@@ -25,5 +26,11 @@ void main()
 		phi = phi + 2.0f * PI;
 	// Use these to lookup the color in the environment map
 	vec2 lookup = vec2(phi / (2.0 * PI), theta / PI);
-	fragmentColor = environment_multiplier * texture(environmentMap, lookup);
+	vec3 skyColor = environment_multiplier * texture(environmentMap, lookup).rgb;
+
+	vec3 normalizedDirection = normalize(sunDirection);
+	float sunIntensity = max(dot(normalize(pixel_world_pos.xyz), normalizedDirection), 0.0);
+	vec3 sunColor = vec3(1.0, 0.9, 0.6) * pow(sunIntensity, 250.0);
+
+	fragmentColor = vec4(skyColor + sunColor, 1.0);
 }

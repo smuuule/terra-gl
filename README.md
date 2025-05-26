@@ -6,14 +6,16 @@ DAT205 Advanced Computer Graphics at Chalmers University of Technology.
 ![alt text](images/thumbnail.png)
 
 <!--toc:start-->
-- [Project Overview](#project-overview)
-- [Features](#features)
-- [Building the Project](#building-the-project)
-  - [Prerequisites](#prerequisites)
-  - [Build Instructions](#build-instructions)
-  - [Running the Application](#running-the-application)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
+
+- [Terra-GL](#terra-gl)
+  - [Project Overview](#project-overview)
+  - [Features](#features)
+  - [Building the Project](#building-the-project)
+    - [Prerequisites](#prerequisites)
+    - [Build Instructions](#build-instructions)
+    - [Running the Application](#running-the-application)
+  - [Project Structure](#project-structure)
+  - [Contributing](#contributing)
 <!--toc:end-->
 
 ## Project Overview
@@ -28,11 +30,12 @@ written in C++ using OpenGL.
 - [x] Basic lighting and shading
 - [x] Height-based color mapping
 - [x] Slope-based color mapping
-- [x] Triplanar texture mapping (has a lot of stretching)
-- [ ] Texture mapping without stretching
-- [ ] Water reflection and refraction (simulation?)
+- [x] Triplanar texture mapping
+- [x] Hydraulic Erosion
+- [ ] Better Hydraulic Erosion
+- [ ] Water reflection and refraction
 - [ ] Vegetation placement and rendering
-- [ ] Day/night cycle with dynamic lighting
+- [x] Day/night cycle with dynamic lighting
 - [ ] Weather effects (rain, snow, fog)
 - [ ] Performance optimization for large terrains
 

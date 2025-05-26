@@ -6,6 +6,7 @@ extern "C" _declspec(dllexport) unsigned int NvOptimusEnablement = 0x00000001;
 #include <chrono>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <labhelper.h>
 
 #include <perf.h>
@@ -19,6 +20,7 @@ using namespace glm;
 #include "hdr.h"
 #include "terrain.h"
 #include <Model.h>
+#include <iostream>
 
 ///////////////////////////////////////////////////////////////////////////////
 // Various globals
@@ -38,6 +40,7 @@ bool g_isMouseDragging = false;
 ///////////////////////////////////////////////////////////////////////////////
 GLuint shaderProgram;
 GLuint backgroundProgram;
+GLuint waterProgram;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Environment
@@ -51,7 +54,10 @@ const std::string envmap_base_name = "001";
 ///////////////////////////////////////////////////////////////////////////////
 vec3 cameraPosition(-70.0f, 50.0f, 70.0f);
 vec3 cameraDirection = normalize(vec3(0.0f) - cameraPosition);
-float cameraSpeed = 10.f;
+float cameraSpeed = 20.f;
+float sunSpeedMultiplier = 1.0f;
+bool timeProgress = true;
+
 
 vec3 worldUp(0.0f, 1.0f, 0.0f);
 
@@ -67,33 +73,42 @@ float waterLevel = -2.0f;
 float sandLevel = -1.5f;
 float grassLevel = 1.2f;
 float rockLevel = 3.0f;
-float slopeThreshold = 0.8f;
+float slopeThreshold = 0.35f;
 
 GLuint heightmapTexture;
 GLuint waterTexture, sandTexture, grassTexture, rockTexture, snowTexture;
 
-void loadShaders(bool is_reload)
-{
+GLuint waterVAO, waterVBO;
+
+vec3 sunDirection = normalize(vec3(1.0f, 0.5f, 0.0f));
+float sunIntensity = 1.0f;
+
+float timeOfDay = 12.0f;
+
+void loadShaders(bool is_reload) {
   GLuint shader = labhelper::loadShaderProgram(
       "../project/background.vert", "../project/background.frag", is_reload);
-  if (shader != 0)
-  {
+  if (shader != 0) {
     backgroundProgram = shader;
   }
 
   shader = labhelper::loadShaderProgram("../project/terrain.vert",
                                         "../project/terrain.frag", is_reload);
-  if (shader != 0)
-  {
+  if (shader != 0) {
     shaderProgram = shader;
+  }
+
+  shader = labhelper::loadShaderProgram("../project/water.vert",
+                                        "../project/water.frag", is_reload);
+  if (shader != 0) {
+      waterProgram = shader;
   }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /// This function is called once at the start of the program and never again
 ///////////////////////////////////////////////////////////////////////////////
-void initialize()
-{
+void initialize() {
   ENSURE_INITIALIZE_ONLY_ONCE();
 
   ///////////////////////////////////////////////////////////////////////
@@ -113,99 +128,97 @@ void initialize()
 
   // Load water texture
   int width, height, channels;
-  unsigned char *data = stbi_load("../scenes/textures/water.png", &width, &height, &channels, 0);
-  if (data)
-  {
+  unsigned char *data =
+      stbi_load("../scenes/textures/water.png", &width, &height, &channels, 0);
+  if (data) {
     glBindTexture(GL_TEXTURE_2D, waterTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+                 GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
   }
 
   // Load sand texture
-  data = stbi_load("../scenes/textures/sand.jpg", &width, &height, &channels, 0);
-  if (data)
-  {
+  data =
+      stbi_load("../scenes/textures/sand.jpg", &width, &height, &channels, 0);
+  if (data) {
     glBindTexture(GL_TEXTURE_2D, sandTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+                 GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
   }
 
   // Load grass texture
-  data = stbi_load("../scenes/textures/grass.jpg", &width, &height, &channels, 0);
-  if (data)
-  {
+  data =
+      stbi_load("../scenes/textures/grass.jpg", &width, &height, &channels, 0);
+  if (data) {
     glBindTexture(GL_TEXTURE_2D, grassTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+                 GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
   }
 
   // Load rock texture
-  data = stbi_load("../scenes/textures/rock.jpg", &width, &height, &channels, 0);
-  if (data)
-  {
+  data =
+      stbi_load("../scenes/textures/rock.jpg", &width, &height, &channels, 0);
+  if (data) {
     glBindTexture(GL_TEXTURE_2D, rockTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+                 GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
   }
 
   // Load snow texture
-  data = stbi_load("../scenes/textures/snow.jpg", &width, &height, &channels, 0);
-  if (data)
-  {
+  data =
+      stbi_load("../scenes/textures/snow.jpg", &width, &height, &channels, 0);
+  if (data) {
     glBindTexture(GL_TEXTURE_2D, snowTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+                 GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
   }
 
   // Set texture parameters for all terrain textures
-  GLuint textures[] = {waterTexture, sandTexture, grassTexture, rockTexture, snowTexture};
-  for (GLuint tex : textures)
-  {
+  GLuint textures[] = {waterTexture, sandTexture, grassTexture, rockTexture,
+                       snowTexture};
+  for (GLuint tex : textures) {
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                    GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   }
   glBindTexture(GL_TEXTURE_2D, 0);
 
-  terrainParams.size = 500;
-  terrainParams.scale = 1.0f;
-  terrainParams.heightScale = 5.0f;
-  terrainParams.noiseOctaves = 8;
   terrainParams.seed = rand();
   terrain = new Terrain(terrainParams);
 
-  terrainModelMatrix = translate(
-      vec3(0.0f, 0.0f, 0.0f));
+  terrainModelMatrix = translate(vec3(0.0f, 0.0f, 0.0f));
 
   glGenTextures(1, &heightmapTexture);
   glBindTexture(GL_TEXTURE_2D, heightmapTexture);
 
   std::vector<float> normalizedHeightmap;
-  normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3); // * 3 for RGB
+  normalizedHeightmap.reserve(terrainParams.size * terrainParams.size *
+                              3);
   float minHeight = FLT_MAX;
   float maxHeight = -FLT_MAX;
 
   auto heightMap = terrain->getHeightMap();
-  for (const auto &row : heightMap)
-  {
-    for (float height : row)
-    {
+  for (const auto &row : heightMap) {
+    for (float height : row) {
       minHeight = std::min(minHeight, height);
       maxHeight = std::max(maxHeight, height);
     }
   }
 
-  for (const auto &row : heightMap)
-  {
-    for (float height : row)
-    {
+  for (const auto &row : heightMap) {
+    for (float height : row) {
       float normalizedHeight = (height - minHeight) / (maxHeight - minHeight);
       normalizedHeightmap.push_back(normalizedHeight);
       normalizedHeightmap.push_back(normalizedHeight);
@@ -213,7 +226,8 @@ void initialize()
     }
   }
 
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size, terrainParams.size, 0, GL_RGB, GL_FLOAT, normalizedHeightmap.data());
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size, terrainParams.size,
+               0, GL_RGB, GL_FLOAT, normalizedHeightmap.data());
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -237,25 +251,69 @@ void initialize()
 
   glEnable(GL_DEPTH_TEST); // enable Z-buffering
   glEnable(GL_CULL_FACE);  // enables backface culling
+
+  glGenVertexArrays(1, &waterVAO);
+  glGenBuffers(1, &waterVBO);
+
+  glBindVertexArray(waterVAO);
+
+  float halfSize = terrainParams.size / 2.0f;
+  float waterVertices[] = {
+      -halfSize, 0.0f, -halfSize, 0.0f, 0.0f,
+      -halfSize, 0.0f,  halfSize, 0.0f, 1.0f,
+       halfSize, 0.0f, -halfSize, 1.0f, 0.0f,
+       halfSize, 0.0f,  halfSize, 1.0f, 1.0f
+  };
+
+  glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(waterVertices), waterVertices, GL_STATIC_DRAW);
+
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+
+  glBindVertexArray(0);
 }
 
-void drawBackground(const mat4 &viewMatrix, const mat4 &projectionMatrix)
-{
+void drawBackground(const mat4 &viewMatrix, const mat4 &projectionMatrix) {
   glUseProgram(backgroundProgram);
   labhelper::setUniformSlow(backgroundProgram, "environment_multiplier",
                             environment_multiplier);
   labhelper::setUniformSlow(backgroundProgram, "inv_PV",
                             inverse(projectionMatrix * viewMatrix));
   labhelper::setUniformSlow(backgroundProgram, "camera_pos", cameraPosition);
+  labhelper::setUniformSlow(backgroundProgram, "sunDirection", sunDirection);
+
   labhelper::drawFullScreenQuad();
+}
+
+void drawWater(const mat4 &viewMatrix, const mat4 &projectionMatrix) {
+    glUseProgram(waterProgram);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, waterTexture);
+    glUniform1i(glGetUniformLocation(waterProgram, "waterTexture"), 0);
+
+    labhelper::setUniformSlow(waterProgram, "viewMatrix", viewMatrix);
+    labhelper::setUniformSlow(waterProgram, "projectionMatrix", projectionMatrix);
+    labhelper::setUniformSlow(waterProgram, "cameraPosition", cameraPosition);
+
+    mat4 waterModelMatrix = translate(vec3(0.0f, waterLevel, 0.0f));
+    labhelper::setUniformSlow(waterProgram, "modelMatrix", waterModelMatrix);
+
+
+    glBindVertexArray(waterVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /// This function is used to draw the main objects on the scene
 ///////////////////////////////////////////////////////////////////////////////
 void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix,
-               const mat4 &projectionMatrix)
-{
+               const mat4 &projectionMatrix) {
   glUseProgram(currentShaderProgram);
   // Environment
   labhelper::setUniformSlow(currentShaderProgram, "environment_multiplier",
@@ -294,7 +352,18 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix,
   labhelper::setUniformSlow(currentShaderProgram, "sandLevel", sandLevel);
   labhelper::setUniformSlow(currentShaderProgram, "grassLevel", grassLevel);
   labhelper::setUniformSlow(currentShaderProgram, "rockLevel", rockLevel);
-  labhelper::setUniformSlow(currentShaderProgram, "slopeThreshold", slopeThreshold);
+  labhelper::setUniformSlow(currentShaderProgram, "slopeThreshold",
+                            slopeThreshold);
+
+  labhelper::setUniformSlow(currentShaderProgram, "sunDirection", sunDirection);
+  labhelper::setUniformSlow(currentShaderProgram, "sunIntensity", sunIntensity);
+
+  vec3 moonDirection = -sunDirection;
+
+  vec3 moonColor = vec3(0.5f, 0.5f, 1.0f);
+
+  labhelper::setUniformSlow(currentShaderProgram, "moonDirection", moonDirection);
+  labhelper::setUniformSlow(currentShaderProgram, "moonColor", moonColor);
 
   // Render terrain
   labhelper::setUniformSlow(currentShaderProgram, "modelViewProjectionMatrix",
@@ -308,8 +377,7 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix,
                             terrainModelMatrix);
 
   glBindVertexArray(terrain->getModel()->m_vaob);
-  for (auto &mesh : terrain->getModel()->m_meshes)
-  {
+  for (auto &mesh : terrain->getModel()->m_meshes) {
     glDrawArrays(GL_TRIANGLE_STRIP, mesh.m_start_index,
                  (GLsizei)mesh.m_number_of_vertices);
   }
@@ -320,8 +388,7 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix,
 /// This function will be called once per frame, so the code to set up
 /// the scene for rendering should go here
 ///////////////////////////////////////////////////////////////////////////////
-void display()
-{
+void display() {
   labhelper::perf::Scope s("Display");
 
   ///////////////////////////////////////////////////////////////////////////
@@ -330,8 +397,7 @@ void display()
   {
     int w, h;
     SDL_GetWindowSize(g_window, &w, &h);
-    if (w != windowWidth || h != windowHeight)
-    {
+    if (w != windowWidth || h != windowHeight) {
       windowWidth = w;
       windowHeight = h;
     }
@@ -374,40 +440,44 @@ void display()
     labhelper::perf::Scope s("Scene");
     drawScene(shaderProgram, viewMatrix, projMatrix);
   }
+  {
+    labhelper::perf::Scope s("Water");
+    drawWater(viewMatrix, projMatrix);
+  }
+
+  // Time progression for sundirection
+  if (timeProgress) {
+    timeOfDay += deltaTime * sunSpeedMultiplier;
+    timeOfDay = fmod(timeOfDay, 24.0f);
+  }
+  float verticalRadians = glm::radians((timeOfDay / 24.0f) * 360.0f - 90.0f);
+  sunDirection = normalize(vec3(cos(verticalRadians), sin(verticalRadians), 0.0f));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /// This function is used to update the scene according to user input
 ///////////////////////////////////////////////////////////////////////////////
-bool handleEvents()
-{
+bool handleEvents() {
   // check events (keyboard among other)
   SDL_Event event;
   bool quitEvent = false;
-  while (SDL_PollEvent(&event))
-  {
+  while (SDL_PollEvent(&event)) {
     labhelper::processEvent(&event);
 
     if (event.type == SDL_QUIT ||
-        (event.type == SDL_KEYUP && event.key.keysym.sym == SDLK_ESCAPE))
-    {
+        (event.type == SDL_KEYUP && event.key.keysym.sym == SDLK_ESCAPE)) {
       quitEvent = true;
     }
-    if (event.type == SDL_KEYUP && event.key.keysym.sym == SDLK_g)
-    {
-      if (labhelper::isGUIvisible())
-      {
+    if (event.type == SDL_KEYUP && event.key.keysym.sym == SDLK_g) {
+      if (labhelper::isGUIvisible()) {
         labhelper::hideGUI();
-      }
-      else
-      {
+      } else {
         labhelper::showGUI();
       }
     }
     if (event.type == SDL_MOUSEBUTTONDOWN &&
         event.button.button == SDL_BUTTON_LEFT &&
-        (!labhelper::isGUIvisible() || !ImGui::GetIO().WantCaptureMouse))
-    {
+        (!labhelper::isGUIvisible() || !ImGui::GetIO().WantCaptureMouse)) {
       g_isMouseDragging = true;
       int x;
       int y;
@@ -416,13 +486,11 @@ bool handleEvents()
       g_prevMouseCoords.y = y;
     }
 
-    if (!(SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_LEFT)))
-    {
+    if (!(SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_LEFT))) {
       g_isMouseDragging = false;
     }
 
-    if (event.type == SDL_MOUSEMOTION && g_isMouseDragging)
-    {
+    if (event.type == SDL_MOUSEMOTION && g_isMouseDragging) {
       // More info at https://wiki.libsdl.org/SDL_MouseMotionEvent
       int delta_x = event.motion.x - g_prevMouseCoords.x;
       int delta_y = event.motion.y - g_prevMouseCoords.y;
@@ -440,29 +508,28 @@ bool handleEvents()
   const uint8_t *state = SDL_GetKeyboardState(nullptr);
   vec3 cameraRight = cross(cameraDirection, worldUp);
 
-  if (state[SDL_SCANCODE_W])
-  {
+  if (state[SDL_SCANCODE_W]) {
     cameraPosition += cameraSpeed * deltaTime * cameraDirection;
   }
-  if (state[SDL_SCANCODE_S])
-  {
+  if (state[SDL_SCANCODE_S]) {
     cameraPosition -= cameraSpeed * deltaTime * cameraDirection;
   }
-  if (state[SDL_SCANCODE_A])
-  {
+  if (state[SDL_SCANCODE_A]) {
     cameraPosition -= cameraSpeed * deltaTime * cameraRight;
   }
-  if (state[SDL_SCANCODE_D])
-  {
+  if (state[SDL_SCANCODE_D]) {
     cameraPosition += cameraSpeed * deltaTime * cameraRight;
   }
-  if (state[SDL_SCANCODE_Q])
-  {
+  if (state[SDL_SCANCODE_Q] || state[SDL_SCANCODE_LCTRL]) {
     cameraPosition -= cameraSpeed * deltaTime * worldUp;
   }
-  if (state[SDL_SCANCODE_E])
-  {
+  if (state[SDL_SCANCODE_E] || state[SDL_SCANCODE_SPACE]) {
     cameraPosition += cameraSpeed * deltaTime * worldUp;
+  }
+  if (state[SDL_SCANCODE_LSHIFT]) {
+    cameraSpeed = 40.f;
+  } else {
+    cameraSpeed = 20.f;
   }
   return quitEvent;
 }
@@ -470,82 +537,136 @@ bool handleEvents()
 ///////////////////////////////////////////////////////////////////////////////
 /// This function is to hold the general GUI logic
 ///////////////////////////////////////////////////////////////////////////////
-void gui()
-{
-  ImGui::SetNextWindowSize(ImVec2(800, 0), ImGuiCond_FirstUseEver); // Set initial window width to 400 pixels
+void gui() {
+  ImGui::SetNextWindowSize(ImVec2(400, 600), ImGuiCond_FirstUseEver);
   ImGui::Begin("Controls");
-  ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
-              1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-  ImGui::SliderFloat("Environment Multiplier", &environment_multiplier, 0.0f,
-                     10.0f);
+  ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
-  ImGui::Separator();
-
-  ImGui::Text("Terrain Thresholds");
-  ImGui::SliderFloat("Water Level", &waterLevel, -10.0f, 0.0f);
-  ImGui::SliderFloat("Sand Level", &sandLevel, waterLevel, 5.0f);
-  ImGui::SliderFloat("Grass Level", &grassLevel, sandLevel, 10.0f);
-  ImGui::SliderFloat("Rock Level", &rockLevel, grassLevel, 20.0f);
-  ImGui::SliderFloat("Slope Threshold", &slopeThreshold, 0.0f, 1.0f);
-
-  ImGui::Separator();
-
-  ImGui::Text("Terrain Generation");
-  ImGui::SliderInt("Terrain Size", &terrainParams.size, 100, 1000);
-  ImGui::SliderFloat("Terrain Scale", &terrainParams.scale, 0.1f, 10.0f);
-  ImGui::SliderFloat("Terrain Height Scale",
-                     &terrainParams.heightScale, 0.1f, 10.0f);
-  ImGui::Text("Noise Map");
-  ImGui::Image((void *)(intptr_t)heightmapTexture, ImVec2(100, 100));
-  ImGui::SliderFloat("Noise Amplitude", &terrainParams.amplitude, 0.1f, 5.0f);
-  ImGui::SliderFloat("Noise Frequency", &terrainParams.frequency, 0.001f, 0.2f);
-  ImGui::InputInt("Seed", (int *)&terrainParams.seed);
-  if (ImGui::Button("Random Seed"))
-  {
-    terrainParams.seed = rand();
+  if (ImGui::CollapsingHeader("Terrain Thresholds")) {
+    ImGui::SliderFloat("Water Level", &waterLevel, -10.0f, 0.0f);
+    ImGui::SliderFloat("Sand Level", &sandLevel, waterLevel, 5.0f);
+    ImGui::SliderFloat("Grass Level", &grassLevel, sandLevel, 10.0f);
+    ImGui::SliderFloat("Rock Level", &rockLevel, grassLevel, 20.0f);
+    ImGui::SliderFloat("Slope Threshold", &slopeThreshold, 0.0f, 1.0f);
   }
 
-  if (ImGui::Button("Generate New Terrain"))
-  {
-    delete terrain;
-    terrain = new Terrain(terrainParams);
+  if (ImGui::CollapsingHeader("Terrain Generation")) {
+    if (ImGui::SliderInt("Terrain Size", &terrainParams.size, 100, 1000) ||
+        ImGui::SliderFloat("Terrain Height Scale", &terrainParams.heightScale, 5.0f, 50.0f) ||
+        ImGui::Checkbox("Apply Erosion", &terrainParams.erosion) ||
+        ImGui::SliderInt("Erosion Iterations", &terrainParams.erosionIterations, 1, 100) ||
+        ImGui::SliderFloat("Talus Angle", &terrainParams.talusAngle, 0.0f, 2.0f) ||
+        ImGui::SliderInt("Noise Octaves", &terrainParams.noiseOctaves, 1, 16) ||
+        ImGui::SliderFloat("Noise Amplitude", &terrainParams.amplitude, 0.1f, 5.0f) ||
+        ImGui::SliderFloat("Noise Frequency", &terrainParams.frequency, 0.001f, 0.2f) ||
+        ImGui::SliderFloat("Noise Persistance", &terrainParams.persistance, 0.0f, 1.0f)) {
+      delete terrain;
+      terrain = new Terrain(terrainParams);
 
-    std::vector<float> normalizedHeightmap;
-    normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3);
-    float minHeight = FLT_MAX;
-    float maxHeight = -FLT_MAX;
+      glBindTexture(GL_TEXTURE_2D, heightmapTexture);
 
-    auto heightMap = terrain->getHeightMap();
-    for (const auto &row : heightMap)
-    {
-      for (float height : row)
-      {
-        minHeight = std::min(minHeight, height);
-        maxHeight = std::max(maxHeight, height);
+      std::vector<float> normalizedHeightmap;
+      normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3);
+
+      float minHeight = FLT_MAX;
+      float maxHeight = -FLT_MAX;
+
+      auto heightMap = terrain->getHeightMap();
+      for (const auto &row : heightMap) {
+        for (float height : row) {
+          minHeight = std::min(minHeight, height);
+          maxHeight = std::max(maxHeight, height);
+        }
       }
+
+      for (const auto &row : heightMap) {
+        for (float height : row) {
+          float normalizedHeight = (height - minHeight) / (maxHeight - minHeight);
+          normalizedHeightmap.push_back(normalizedHeight);
+          normalizedHeightmap.push_back(normalizedHeight);
+          normalizedHeightmap.push_back(normalizedHeight);
+        }
+      }
+
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size, terrainParams.size,
+                   0, GL_RGB, GL_FLOAT, normalizedHeightmap.data());
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
 
-    for (const auto &row : heightMap)
-    {
-      for (float height : row)
-      {
-        float normalizedHeight = (height - minHeight) / (maxHeight - minHeight);
-        normalizedHeightmap.push_back(normalizedHeight);
-        normalizedHeightmap.push_back(normalizedHeight);
-        normalizedHeightmap.push_back(normalizedHeight);
+    const char* noiseTypes[] = {"Perlin", "Simplex", "Value"};
+    int currentNoiseType = static_cast<int>(terrainParams.noiseType);
+    if (ImGui::Combo("Noise Type", &currentNoiseType, noiseTypes, sizeof(noiseTypes) / sizeof(noiseTypes[0]))) {
+      terrainParams.noiseType = static_cast<NoiseType>(currentNoiseType);
+      delete terrain;
+      terrain = new Terrain(terrainParams);
+
+      glBindTexture(GL_TEXTURE_2D, heightmapTexture);
+
+      std::vector<float> normalizedHeightmap;
+      normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3);
+
+      float minHeight = FLT_MAX;
+      float maxHeight = -FLT_MAX;
+
+      auto heightMap = terrain->getHeightMap();
+      for (const auto &row : heightMap) {
+        for (float height : row) {
+          minHeight = std::min(minHeight, height);
+          maxHeight = std::max(maxHeight, height);
+        }
       }
+
+      for (const auto &row : heightMap) {
+        for (float height : row) {
+          float normalizedHeight = (height - minHeight) / (maxHeight - minHeight);
+          normalizedHeightmap.push_back(normalizedHeight);
+          normalizedHeightmap.push_back(normalizedHeight);
+          normalizedHeightmap.push_back(normalizedHeight);
+        }
+      }
+
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size, terrainParams.size,
+                   0, GL_RGB, GL_FLOAT, normalizedHeightmap.data());
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
 
-    glBindTexture(GL_TEXTURE_2D, heightmapTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size, terrainParams.size, 0, GL_RGB, GL_FLOAT, normalizedHeightmap.data());
-    glBindTexture(GL_TEXTURE_2D, 0);
+    ImGui::Text("Noise Map");
+    ImGui::Image((void *)(intptr_t)heightmapTexture, ImVec2(100, 100));
+    ImGui::InputInt("Seed", (int *)&terrainParams.seed);
+    if (ImGui::Button("Random Seed")) {
+      terrainParams.seed = rand();
+      delete terrain;
+      terrain = new Terrain(terrainParams);
+
+      float halfSize = terrainParams.size / 2.0f;
+      float waterVertices[] = {
+          -halfSize, 0.0f, -halfSize, 0.0f, 0.0f,
+          -halfSize, 0.0f,  halfSize, 0.0f, 1.0f,
+           halfSize, 0.0f, -halfSize, 1.0f, 0.0f,
+           halfSize, 0.0f,  halfSize, 1.0f, 1.0f
+      };
+
+      glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(waterVertices), waterVertices, GL_STATIC_DRAW);
+    }
+  }
+
+  if (ImGui::CollapsingHeader("Sun Rotation")) {
+    int hour = static_cast<int>(timeOfDay);
+    int minute = static_cast<int>((timeOfDay - hour) * 60);
+    char timeLabel[16];
+    snprintf(timeLabel, sizeof(timeLabel), "%02d:%02d", hour, minute);
+    ImGui::SliderFloat("Time of Day", &timeOfDay, 0.0f, 24.0f, timeLabel);
+    ImGui::SliderFloat("Sun Speed Multiplier", &sunSpeedMultiplier, 1.0f, 50.0f);
+    ImGui::Checkbox("Time Progression", &timeProgress);
   }
 
   ImGui::End();
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   g_window = labhelper::init_window_SDL("OpenGL Project");
 
   initialize();
@@ -553,8 +674,7 @@ int main(int argc, char *argv[])
   bool stopRendering = false;
   auto startTime = std::chrono::system_clock::now();
 
-  while (!stopRendering)
-  {
+  while (!stopRendering) {
     // update currentTime
     std::chrono::duration<float> timeSinceStart =
         std::chrono::system_clock::now() - startTime;

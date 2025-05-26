@@ -30,6 +30,19 @@ uniform vec3 point_light_color = vec3(1.0, 1.0, 1.0);
 uniform float point_light_intensity_multiplier = 50.0;
 
 ///////////////////////////////////////////////////////////////////////////////
+// Sunlight source
+///////////////////////////////////////////////////////////////////////////////
+uniform vec3 sunDirection; // Sun direction vector
+uniform vec3 sun_color = vec3(1.0, 1.0, 0.8);
+uniform float sunIntensity; // Sun intensity multiplier
+
+///////////////////////////////////////////////////////////////////////////////
+// Moonlight source
+///////////////////////////////////////////////////////////////////////////////
+uniform vec3 moonDirection; // Moon direction vector
+uniform vec3 moonColor; // Moon color
+
+///////////////////////////////////////////////////////////////////////////////
 // Constants
 ///////////////////////////////////////////////////////////////////////////////
 #define PI 3.14159265359
@@ -148,16 +161,24 @@ vec3 calculateIndirectIllumination(vec3 wo, vec3 n, vec3 base_color)
     return indirect_illum;
 }
 
+vec3 calculateSunIllumination(vec3 n, vec3 base_color, vec3 sun_direction, vec3 sun_color, float sun_intensity) {
+    vec3 wi = -sun_direction;
+    vec3 Li = sun_intensity * sun_color;
+    if (dot(wi, n) <= 0.0) return vec3(0, 0, 0);
+
+    vec3 sun_illum = base_color * (1.0 / PI) * dot(n, wi) * Li;
+    return sun_illum;
+}
+
 vec3 getTriplanarMapping(vec3 normal, vec3 position, sampler2D tex, float scale) {
     vec3 blendWeights = abs(normal);
     blendWeights = blendWeights / (blendWeights.x + blendWeights.y + blendWeights.z);
     
-    // Add noise to position
     vec3 noiseOffset = vec3(
         noise(position.yz * 0.1),
         noise(position.xz * 0.1),
         noise(position.xy * 0.1)
-    ) * 0.4; // Adjust noise strength here
+    ) * 0.4;
     
     vec3 scaledPosition = (position + noiseOffset) / scale;
     
@@ -214,16 +235,21 @@ vec3 getTerrainColor(float height) {
 
 void main()
 {
-    vec3 wo = -normalize(viewSpacePosition);
     vec3 n = normalize(viewSpaceNormal);
 
     vec3 terrainColor = getTerrainColor(worldHeight);
 
     // Direct illumination
-    vec3 direct_illumination_term = calculateDirectIllumiunation(wo, n, terrainColor);
+    vec3 direct_illumination_term = calculateDirectIllumiunation(-normalize(viewSpacePosition), n, terrainColor);
+
+    // Sunlight illumination
+    vec3 sunlight_illumination_term = calculateSunIllumination(n, terrainColor, sunDirection, sun_color, sunIntensity);
+
+    // Moonlight illumination
+    vec3 moonlight_illumination_term = calculateSunIllumination(n, terrainColor, moonDirection, moonColor, 1.0);
 
     // Indirect illumination
-    vec3 indirect_illumination_term = calculateIndirectIllumination(wo, n, terrainColor);
+    vec3 indirect_illumination_term = calculateIndirectIllumination(-normalize(viewSpacePosition), n, terrainColor);
 
     ///////////////////////////////////////////////////////////////////////////
     // Add emissive term. If emissive texture exists, sample this term.
@@ -233,7 +259,7 @@ void main()
     // {
     //     emission_term = texture(emissiveMap, texCoord).rgb;
     // }
-    vec3 shading = direct_illumination_term + indirect_illumination_term; // + emission_term;
+    vec3 shading = direct_illumination_term + sunlight_illumination_term + moonlight_illumination_term + indirect_illumination_term; // + emission_term;
 
     float distance = length(viewSpacePosition);
 
