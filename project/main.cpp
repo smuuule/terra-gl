@@ -69,10 +69,10 @@ Terrain *terrain = nullptr;
 TerrainParams terrainParams;
 mat4 terrainModelMatrix;
 
-float waterLevel = -2.0f;
-float sandLevel = -1.5f;
-float grassLevel = 1.2f;
-float rockLevel = 3.0f;
+float waterLevel = -3.5f;
+float sandLevel = -2.5f;
+float grassLevel = 1.0f;
+float rockLevel = 3.5f;
 float slopeThreshold = 0.35f;
 
 GLuint heightmapTexture;
@@ -557,9 +557,10 @@ void gui() {
         ImGui::SliderInt("Erosion Iterations", &terrainParams.erosionIterations, 1, 100) ||
         ImGui::SliderFloat("Talus Angle", &terrainParams.talusAngle, 0.0f, 2.0f) ||
         ImGui::SliderInt("Noise Octaves", &terrainParams.noiseOctaves, 1, 16) ||
-        ImGui::SliderFloat("Noise Amplitude", &terrainParams.amplitude, 0.1f, 5.0f) ||
+        ImGui::SliderFloat("Noise Amplitude", &terrainParams.amplitude, 0.1f, 20.0f) ||
         ImGui::SliderFloat("Noise Frequency", &terrainParams.frequency, 0.001f, 0.2f) ||
-        ImGui::SliderFloat("Noise Persistance", &terrainParams.persistance, 0.0f, 1.0f)) {
+        ImGui::SliderFloat("Noise Persistance", &terrainParams.persistance, 0.0f, 1.0f) ||
+        ImGui::SliderFloat("Noise Lacunarity", &terrainParams.lacunarity, 1.0f, 4.0f)) {
       delete terrain;
       terrain = new Terrain(terrainParams);
 

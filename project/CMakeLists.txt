@@ -15,6 +15,7 @@ add_executable ( ${PROJECT_NAME}
     main.cpp
     terrain.cpp
     terrain.h
+    noise.cpp
     ${SHADERS}
     )
 
