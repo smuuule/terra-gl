@@ -1,15 +1,18 @@
 #version 330 core
 
 layout(location = 0) in vec3 position;
-layout(location = 1) in vec2 texCoord;
 
-out vec2 fragTexCoord;
+out vec2 texCoords;
+out vec4 clipSpace;
+out vec3 worldPosition;
 
 uniform mat4 modelMatrix;
 uniform mat4 viewMatrix;
 uniform mat4 projectionMatrix;
 
 void main() {
-    fragTexCoord = texCoord;
-    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+    worldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+    texCoords = vec2(position.x / 2.0 + 0.5, position.z / 2.0 + 0.5);
+    clipSpace = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+    gl_Position = clipSpace;
 }

@@ -33,7 +33,7 @@ written in C++ using OpenGL.
 - [x] Triplanar texture mapping
 - [x] Hydraulic Erosion
 - [ ] Better Hydraulic Erosion
-- [ ] Water reflection and refraction
+- [x] Water reflection and refraction
 - [ ] Vegetation placement and rendering
 - [x] Day/night cycle with dynamic lighting
 - [ ] Weather effects (rain, snow, fog)

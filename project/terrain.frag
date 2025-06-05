@@ -32,15 +32,14 @@ uniform float point_light_intensity_multiplier = 50.0;
 ///////////////////////////////////////////////////////////////////////////////
 // Sunlight source
 ///////////////////////////////////////////////////////////////////////////////
-uniform vec3 sunDirection; // Sun direction vector
-uniform vec3 sun_color = vec3(1.0, 1.0, 0.8);
-uniform float sunIntensity; // Sun intensity multiplier
+uniform vec3 sunDirection;
+uniform vec3 sunColor = vec3(1.0, 1.0, 0.8);
+uniform float sunIntensity;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Moonlight source
 ///////////////////////////////////////////////////////////////////////////////
-uniform vec3 moonDirection; // Moon direction vector
-uniform vec3 moonColor; // Moon color
+uniform vec3 moonColor = vec3(0.5f, 0.5f, 1.0f);
 
 ///////////////////////////////////////////////////////////////////////////////
 // Constants
@@ -69,17 +68,15 @@ layout(location = 0) out vec4 fragmentColor;
 
 layout(binding = 9) uniform sampler2D colormap;
 
-uniform float waterLevel;
 uniform float sandLevel;
 uniform float grassLevel;
 uniform float rockLevel;
 uniform float slopeThreshold = 0.7;
 
-layout(binding = 10) uniform sampler2D waterTexture;
-layout(binding = 11) uniform sampler2D sandTexture;
-layout(binding = 12) uniform sampler2D grassTexture;
-layout(binding = 13) uniform sampler2D rockTexture;
-layout(binding = 14) uniform sampler2D snowTexture;
+layout(binding = 10) uniform sampler2D sandTexture;
+layout(binding = 11) uniform sampler2D grassTexture;
+layout(binding = 12) uniform sampler2D rockTexture;
+layout(binding = 13) uniform sampler2D snowTexture;
 
 uniform float textureScale = 10.0;
 
@@ -202,28 +199,24 @@ vec3 getTriplanarMapping(vec3 normal, vec3 position, sampler2D tex, float scale)
 }
 
 vec3 getTerrainColor(float height) {
-    
-    float slope = 1.0 - abs(dot(normalize(viewSpaceNormal), vec3(0.0, 1.0, 0.0)));
-    
     vec3 worldPos = vec3(viewInverse * vec4(viewSpacePosition, 1.0));
+    vec3 worldNormal = normalize(vec3(viewInverse * vec4(viewSpaceNormal, 0.0)));
+
+    float slope = 1.0 - abs(dot(worldNormal, vec3(0.0, 1.0, 0.0)));
     
-    vec3 waterTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, waterTexture, textureScale);
-    vec3 sandTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, sandTexture, textureScale);
-    vec3 grassTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, grassTexture, textureScale);
-    vec3 rockTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, rockTexture, textureScale);
-    vec3 snowTex = getTriplanarMapping(normalize(viewSpaceNormal), worldPos, snowTexture, textureScale);
+    vec3 sandTex = getTriplanarMapping(worldNormal, worldPos, sandTexture, textureScale);
+    vec3 grassTex = getTriplanarMapping(worldNormal, worldPos, grassTexture, textureScale);
+    vec3 rockTex = getTriplanarMapping(worldNormal, worldPos, rockTexture, textureScale);
+    vec3 snowTex = getTriplanarMapping(worldNormal, worldPos, snowTexture, textureScale);
     
     float smoothing = 0.4;
-    float waterBlend = smoothstep(waterLevel - smoothing, waterLevel + smoothing, height);
     float sandBlend = smoothstep(sandLevel - smoothing, sandLevel + smoothing, height);
     float grassBlend = smoothstep(grassLevel - smoothing, grassLevel + smoothing, height);
     float rockBlend = smoothstep(rockLevel - smoothing, rockLevel + smoothing, height);
     
     float slopeBlend = smoothstep(slopeThreshold - 0.1, slopeThreshold + 0.1, slope);
     
-    vec3 color = waterTex;
-    
-    color = mix(color, sandTex, waterBlend);
+    vec3 color = sandTex;
     color = mix(color, grassTex, sandBlend);
     color = mix(color, rockTex, grassBlend);
     color = mix(color, snowTex, rockBlend);
@@ -243,10 +236,10 @@ void main()
     vec3 direct_illumination_term = calculateDirectIllumiunation(-normalize(viewSpacePosition), n, terrainColor);
 
     // Sunlight illumination
-    vec3 sunlight_illumination_term = calculateSunIllumination(n, terrainColor, sunDirection, sun_color, sunIntensity);
+    vec3 sunlight_illumination_term = calculateSunIllumination(n, terrainColor, sunDirection, sunColor, sunIntensity);
 
     // Moonlight illumination
-    vec3 moonlight_illumination_term = calculateSunIllumination(n, terrainColor, moonDirection, moonColor, 1.0);
+    vec3 moonlight_illumination_term = calculateSunIllumination(n, terrainColor, -sunDirection, moonColor, 1.0);
 
     // Indirect illumination
     vec3 indirect_illumination_term = calculateIndirectIllumination(-normalize(viewSpacePosition), n, terrainColor);

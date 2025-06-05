@@ -16,6 +16,8 @@ uniform mat4 modelMatrix;
 
 uniform vec3 sunDirection;
 uniform float sunIntensity;
+uniform vec3 clipNormal;
+uniform float clipHeight;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Output to fragment shader
@@ -36,6 +38,8 @@ void main()
 	
 	vec4 worldPos = modelMatrix * vec4(position, 1.0);
 	worldHeight = worldPos.y;
+
+	gl_ClipDistance[0] = dot(worldPos, vec4(clipNormal, clipHeight));
 
 	viewSpaceSunDirection = (modelViewMatrix * vec4(sunDirection, 0.0)).xyz;
 }
