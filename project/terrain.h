@@ -1,11 +1,7 @@
 #pragma once
 #include "Model.h"
 
-enum class NoiseType {
-  Perlin,
-  Simplex,
-  Value
-};
+enum class NoiseType { Perlin, Simplex, Value };
 
 struct TerrainParams {
   int size = 500;

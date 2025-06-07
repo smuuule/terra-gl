@@ -1,6 +1,6 @@
 cmake_minimum_required( VERSION 3.5 )
 
-project( opengl-base-project )
+project( terra-gl )
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo"

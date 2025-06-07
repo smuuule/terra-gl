@@ -73,7 +73,7 @@ float waterLevel = -3.5f;
 float sandLevel = -2.5f;
 float grassLevel = 1.0f;
 float rockLevel = 3.5f;
-float slopeThreshold = 0.35f;
+float slopeThreshold = 0.15f;
 
 GLuint heightmapTexture;
 GLuint sandTexture, grassTexture, rockTexture, snowTexture;
@@ -82,7 +82,6 @@ float waterDisplacementStrength = 0.007f;
 float waterTiling = 16.0f;
 float timeOffset = 0.0f;
 float waveSpeed = 0.04f;
-
 
 GLuint waterVAO, waterVBO;
 
@@ -227,8 +226,8 @@ void initialize() {
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
   }
-  data = stbi_load("../scenes/textures/normal_water_displacement.png",
-                                  &width, &height, &channels, 0);
+  data = stbi_load("../scenes/textures/normal_water_displacement.png", &width,
+                   &height, &channels, 0);
   if (data) {
     glBindTexture(GL_TEXTURE_2D, normalWaterDisplacementTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
@@ -282,8 +281,7 @@ void initialize() {
   }
 
   // Set texture parameters for all terrain textures
-  GLuint textures[] = {sandTexture, grassTexture, rockTexture,
-                       snowTexture};
+  GLuint textures[] = {sandTexture, grassTexture, rockTexture, snowTexture};
   for (GLuint tex : textures) {
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -412,11 +410,14 @@ void drawWater(const mat4 &viewMatrix, const mat4 &projectionMatrix) {
   glUniform1i(glGetUniformLocation(waterProgram, "displacementTexture"), 2);
   glActiveTexture(GL_TEXTURE3);
   glBindTexture(GL_TEXTURE_2D, normalWaterDisplacementTexture);
-  glUniform1i(glGetUniformLocation(waterProgram, "normalDisplacementTexture"), 3);
-  glUniform1f(glGetUniformLocation(waterProgram, "displacementStrength"), waterDisplacementStrength);
+  glUniform1i(glGetUniformLocation(waterProgram, "normalDisplacementTexture"),
+              3);
+  glUniform1f(glGetUniformLocation(waterProgram, "displacementStrength"),
+              waterDisplacementStrength);
   glUniform1f(glGetUniformLocation(waterProgram, "waterTiling"), waterTiling);
   glUniform1f(glGetUniformLocation(waterProgram, "timeOffset"), timeOffset);
-  glUniform3fv(glGetUniformLocation(waterProgram, "cameraPosition"), 1, &cameraPosition[0]);
+  glUniform3fv(glGetUniformLocation(waterProgram, "cameraPosition"), 1,
+               &cameraPosition[0]);
 
   labhelper::setUniformSlow(waterProgram, "sunDirection", sunDirection);
   labhelper::setUniformSlow(waterProgram, "sunIntensity", sunIntensity);
@@ -605,7 +606,7 @@ void display() {
   float verticalRadians = glm::radians((timeOfDay / 24.0f) * 360.0f - 90.0f);
   sunDirection =
       normalize(vec3(cos(verticalRadians), sin(verticalRadians), 0.0f));
-  
+
   // Varies between 0 and 1
   float timeFactor = (sin(verticalRadians) + 1.0f) * 0.5f;
   float smoothFactor = smoothstep(0.0f, 1.0f, timeFactor);
@@ -827,7 +828,8 @@ void gui() {
   }
 
   if (ImGui::CollapsingHeader("Sun and Lighting")) {
-    ImGui::SliderFloat("Environment Multiplier", &lighting_multiplier, 0.0f, 5.0f);
+    ImGui::SliderFloat("Environment Multiplier", &lighting_multiplier, 0.0f,
+                       5.0f);
     ImGui::SliderFloat("Sun Intensity", &sunIntensity, 0.0f, 5.0f);
     ImGui::ColorEdit3("Sun Color", &sunColor[0]);
     ImGui::ColorEdit3("Moon Color", &moonColor[0]);
@@ -844,7 +846,8 @@ void gui() {
   }
 
   if (ImGui::CollapsingHeader("Water Settings")) {
-    ImGui::SliderFloat("Displacement Strength", &waterDisplacementStrength, 0.0f, 0.1f);
+    ImGui::SliderFloat("Displacement Strength", &waterDisplacementStrength,
+                       0.0f, 0.1f);
     ImGui::SliderFloat("Water Tiling", &waterTiling, 0.1f, 32.0f);
     ImGui::SliderFloat("Wave Speed", &waveSpeed, 0.0f, 1.0f);
   }
@@ -853,7 +856,7 @@ void gui() {
 }
 
 int main(int argc, char *argv[]) {
-  g_window = labhelper::init_window_SDL("OpenGL Project");
+  g_window = labhelper::init_window_SDL("Terra GL");
   SDL_GetWindowSize(g_window, &windowWidth, &windowHeight);
   initialize();
 

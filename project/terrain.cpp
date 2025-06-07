@@ -20,7 +20,8 @@ void Terrain::applyErosion(int iterations, float talusAngle) {
         float currentHeight = heightMap[z][x];
         for (int dz = -1; dz <= 1; dz++) {
           for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dz == 0) continue;
+            if (dx == 0 && dz == 0)
+              continue;
 
             float neighborHeight = heightMap[z + dz][x + dx];
             float heightDiff = currentHeight - neighborHeight;
@@ -39,14 +40,14 @@ void Terrain::applyErosion(int iterations, float talusAngle) {
 
 float Terrain::noise(int seed, float x, float z) {
   switch (params.noiseType) {
-    case NoiseType::Perlin:
-      return fractal(seed, perlin, x, z, params);
-    case NoiseType::Simplex:
-      return fractal(seed, simplex, x, z, params);
-    case NoiseType::Value:
-      return valueNoise(x, z, whiteNoise, params);
-    default:
-      return 0.0f;
+  case NoiseType::Perlin:
+    return fractal(seed, perlin, x, z, params);
+  case NoiseType::Simplex:
+    return fractal(seed, simplex, x, z, params);
+  case NoiseType::Value:
+    return valueNoise(x, z, whiteNoise, params);
+  default:
+    return 0.0f;
   }
 }
 
@@ -61,9 +62,9 @@ void Terrain::generateTerrain() {
   srand(params.seed);
   whiteNoise.resize(params.size, std::vector<float>(params.size));
   for (int x = 0; x < params.size; ++x) {
-      for (int z = 0; z < params.size; ++z) {
-          whiteNoise[x][z] = static_cast<float>(rand()) / RAND_MAX;
-      }
+    for (int z = 0; z < params.size; ++z) {
+      whiteNoise[x][z] = static_cast<float>(rand()) / RAND_MAX;
+    }
   }
 
   heightMap.resize(params.size, std::vector<float>(params.size));

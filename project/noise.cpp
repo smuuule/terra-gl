@@ -1,7 +1,8 @@
 #include "noise.h"
 #include "terrain.h"
 
-float valueNoise(float x, float z, std::vector<std::vector<float>> &whiteNoise, TerrainParams params) {
+float valueNoise(float x, float z, std::vector<std::vector<float>> &whiteNoise,
+                 TerrainParams params) {
   x *= params.frequency;
   z *= params.frequency;
 
@@ -11,9 +12,11 @@ float valueNoise(float x, float z, std::vector<std::vector<float>> &whiteNoise, 
   float fracZ = smoothstep(z - gridZ);
 
   float bottomLeft = whiteNoise[gridX % params.size][gridZ % params.size];
-  float bottomRight = whiteNoise[(gridX + 1) % params.size][gridZ % params.size];
+  float bottomRight =
+      whiteNoise[(gridX + 1) % params.size][gridZ % params.size];
   float topLeft = whiteNoise[gridX % params.size][(gridZ + 1) % params.size];
-  float topRight = whiteNoise[(gridX + 1) % params.size][(gridZ + 1) % params.size];
+  float topRight =
+      whiteNoise[(gridX + 1) % params.size][(gridZ + 1) % params.size];
 
   float bottom = lerp(bottomLeft, bottomRight, fracX);
   float top = lerp(topLeft, topRight, fracX);
@@ -21,57 +24,58 @@ float valueNoise(float x, float z, std::vector<std::vector<float>> &whiteNoise, 
   return lerp(bottom, top, fracZ);
 }
 
-float cornerContrib(const glm::vec2& grad, float x, float z) {
-    float t = 0.5f - x * x - z * z;
-    if (t < 0.0f) {
-        return 0.0f;
-    } else {
-        t *= t;
-        return t * t * glm::dot(grad, glm::vec2(x, z));
-    }
+float cornerContrib(const glm::vec2 &grad, float x, float z) {
+  float t = 0.5f - x * x - z * z;
+  if (t < 0.0f) {
+    return 0.0f;
+  } else {
+    t *= t;
+    return t * t * glm::dot(grad, glm::vec2(x, z));
+  }
 }
 
 float simplex(int seed, float x, float z) {
-    float F2 = 0.5f * (sqrt(3.0f) - 1.0f);
-    float G2 = (3.0f - sqrt(3.0f)) / 6.0f;
+  float F2 = 0.5f * (sqrt(3.0f) - 1.0f);
+  float G2 = (3.0f - sqrt(3.0f)) / 6.0f;
 
-    // Skew input space
-    float s = (x + z) * F2;
-    float xs = x + s;
-    float zs = z + s;
-    int i = floor(xs);
-    int j = floor(zs);
+  // Skew input space
+  float s = (x + z) * F2;
+  float xs = x + s;
+  float zs = z + s;
+  int i = floor(xs);
+  int j = floor(zs);
 
-    // Unskew back to original space
-    float t = (i + j) * G2;
-    float x0 = x - (i - t);
-    float z0 = z - (j - t);
+  // Unskew back to original space
+  float t = (i + j) * G2;
+  float x0 = x - (i - t);
+  float z0 = z - (j - t);
 
-    // Determine simplex corner offsets,
-    // second corner depends if we are in upper or lower triangle
-    int i1, j1;
-    if (x0 > z0) {
-        i1 = 1;
-        j1 = 0;
-    } else {
-        i1 = 0;
-        j1 = 1;
-    }
+  // Determine simplex corner offsets,
+  // second corner depends if we are in upper or lower triangle
+  int i1, j1;
+  if (x0 > z0) {
+    i1 = 1;
+    j1 = 0;
+  } else {
+    i1 = 0;
+    j1 = 1;
+  }
 
-    float x1 = x0 - i1 + G2;
-    float z1 = z0 - j1 + G2;
-    float x2 = x0 - 1.0f + 2.0f * G2;
-    float z2 = z0 - 1.0f + 2.0f * G2;
+  float x1 = x0 - i1 + G2;
+  float z1 = z0 - j1 + G2;
+  float x2 = x0 - 1.0f + 2.0f * G2;
+  float z2 = z0 - 1.0f + 2.0f * G2;
 
-    // Calculate the contributions from the three corners
-    float n0 = cornerContrib(randGrad(seed, i, j), x0, z0);
-    float n1 = cornerContrib(randGrad(seed, i + i1, j + j1), x1, z1);
-    float n2 = cornerContrib(randGrad(seed, i + 1, j + 1), x2, z2);
+  // Calculate the contributions from the three corners
+  float n0 = cornerContrib(randGrad(seed, i, j), x0, z0);
+  float n1 = cornerContrib(randGrad(seed, i + i1, j + j1), x1, z1);
+  float n2 = cornerContrib(randGrad(seed, i + 1, j + 1), x2, z2);
 
-    return 45.23065f * (n0 + n1 + n2);
+  return 45.23065f * (n0 + n1 + n2);
 }
 
-float fractal(int seed, float (*noiseFunction)(int, float, float), float x, float z, TerrainParams params) {
+float fractal(int seed, float (*noiseFunction)(int, float, float), float x,
+              float z, TerrainParams params) {
   float value = 0.0f;
   float amplitude = params.amplitude;
   float frequency = params.frequency;

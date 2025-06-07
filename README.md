@@ -2,7 +2,6 @@
 
 A computer graphics project developed for the course
 DAT205 Advanced Computer Graphics at Chalmers University of Technology.
-
 ![alt text](images/thumbnail.png)
 
 <!--toc:start-->
@@ -16,7 +15,7 @@ DAT205 Advanced Computer Graphics at Chalmers University of Technology.
     - [Running the Application](#running-the-application)
   - [Project Structure](#project-structure)
   - [Contributing](#contributing)
-<!--toc:end-->
+  <!--toc:end-->
 
 ## Project Overview
 
@@ -31,11 +30,11 @@ written in C++ using OpenGL.
 - [x] Height-based color mapping
 - [x] Slope-based color mapping
 - [x] Triplanar texture mapping
+- [x] Reflective water with normal maps
+- [x] Day/night cycle with dynamic lighting
 - [x] Hydraulic Erosion
 - [ ] Better Hydraulic Erosion
-- [x] Water reflection and refraction
 - [ ] Vegetation placement and rendering
-- [x] Day/night cycle with dynamic lighting
 - [ ] Weather effects (rain, snow, fog)
 - [ ] Performance optimization for large terrains
 
