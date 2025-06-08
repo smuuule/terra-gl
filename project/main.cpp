@@ -2,13 +2,16 @@
 extern "C" _declspec(dllexport) unsigned int NvOptimusEnablement = 0x00000001;
 #endif
 
-#include <GL/glew.h>
 #include <chrono>
 
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <labhelper.h>
+#include "imgui_curve.hpp"
 
+#include <GL/glew.h>
+#include <labhelper.h>
+#include <Model.h>
 #include <perf.h>
 
 #include <glm/glm.hpp>
@@ -19,8 +22,6 @@ using namespace glm;
 
 #include "hdr.h"
 #include "terrain.h"
-#include <Model.h>
-#include <iostream>
 
 ///////////////////////////////////////////////////////////////////////////////
 // Various globals
@@ -69,11 +70,15 @@ Terrain *terrain = nullptr;
 TerrainParams terrainParams;
 mat4 terrainModelMatrix;
 
-float waterLevel = -3.5f;
-float sandLevel = -2.5f;
-float grassLevel = 1.0f;
-float rockLevel = 3.5f;
+float waterLevel = 0.5f;
+float sandLevel = 0.7f;
+float grassLevel = 2.5f;
+float rockLevel = 6.2f;
 float slopeThreshold = 0.15f;
+
+ImVec2 curvePoints[10];
+int curveSelection = -1;
+bool showCurveEditor = false;
 
 GLuint heightmapTexture;
 GLuint sandTexture, grassTexture, rockTexture, snowTexture;
@@ -293,6 +298,14 @@ void initialize() {
   glBindTexture(GL_TEXTURE_2D, 0);
 
   terrainParams.seed = rand();
+  curvePoints[0] = ImVec2(0.0f, 0.0f);
+  curvePoints[1] = ImVec2(0.04f, 0.02f);
+  curvePoints[2] = ImVec2(0.38f, 0.10f);
+  curvePoints[3] = ImVec2(0.74f, 0.37f);
+  curvePoints[4] = ImVec2(0.94f, 0.68f);
+  curvePoints[5] = ImVec2(1.0f, 1.0f);
+  curvePoints[6].x = ImGui::CurveTerminator;
+  terrainParams.curvePoints = curvePoints;
   terrain = new Terrain(terrainParams);
 
   terrainModelMatrix = translate(vec3(0.0f, 0.0f, 0.0f));
@@ -704,7 +717,7 @@ void gui() {
               1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
   if (ImGui::CollapsingHeader("Terrain Thresholds")) {
-    ImGui::SliderFloat("Water Level", &waterLevel, -10.0f, 0.0f);
+    ImGui::SliderFloat("Water Level", &waterLevel, 0.0f, 2.5f);
     ImGui::SliderFloat("Sand Level", &sandLevel, waterLevel, 5.0f);
     ImGui::SliderFloat("Grass Level", &grassLevel, sandLevel, 10.0f);
     ImGui::SliderFloat("Rock Level", &rockLevel, grassLevel, 20.0f);
@@ -712,67 +725,35 @@ void gui() {
   }
 
   if (ImGui::CollapsingHeader("Terrain Generation")) {
+    bool heightMapChanged = false;
+    
+    if (ImGui::Button(showCurveEditor ? "Hide Height Distribution Curve" : "Show Height Distribution Curve")) {
+      showCurveEditor = !showCurveEditor;
+    }
+
     if (ImGui::SliderInt("Terrain Size", &terrainParams.size, 100, 1000) ||
-        ImGui::SliderFloat("Terrain Height Scale", &terrainParams.heightScale,
-                           5.0f, 50.0f) ||
+        ImGui::SliderFloat("Terrain Height Scale", &terrainParams.heightScale, 5.0f, 50.0f) ||
         ImGui::Checkbox("Apply Erosion", &terrainParams.erosion) ||
-        ImGui::SliderInt("Erosion Iterations", &terrainParams.erosionIterations,
-                         1, 100) ||
-        ImGui::SliderFloat("Talus Angle", &terrainParams.talusAngle, 0.0f,
-                           2.0f) ||
+        ImGui::SliderInt("Erosion Iterations", &terrainParams.erosionIterations, 1, 100) ||
+        ImGui::SliderFloat("Talus Angle", &terrainParams.talusAngle, 0.0f, 2.0f) ||
         ImGui::SliderInt("Noise Octaves", &terrainParams.noiseOctaves, 1, 16) ||
-        ImGui::SliderFloat("Noise Amplitude", &terrainParams.amplitude, 0.1f,
-                           20.0f) ||
-        ImGui::SliderFloat("Noise Frequency", &terrainParams.frequency, 0.001f,
-                           0.2f) ||
-        ImGui::SliderFloat("Noise Persistance", &terrainParams.persistance,
-                           0.0f, 1.0f) ||
-        ImGui::SliderFloat("Noise Lacunarity", &terrainParams.lacunarity, 1.0f,
-                           4.0f)) {
-      delete terrain;
-      terrain = new Terrain(terrainParams);
-
-      glBindTexture(GL_TEXTURE_2D, heightmapTexture);
-
-      std::vector<float> normalizedHeightmap;
-      normalizedHeightmap.reserve(terrainParams.size * terrainParams.size * 3);
-
-      float minHeight = FLT_MAX;
-      float maxHeight = -FLT_MAX;
-
-      auto heightMap = terrain->getHeightMap();
-      for (const auto &row : heightMap) {
-        for (float height : row) {
-          minHeight = std::min(minHeight, height);
-          maxHeight = std::max(maxHeight, height);
-        }
-      }
-
-      for (const auto &row : heightMap) {
-        for (float height : row) {
-          float normalizedHeight =
-              (height - minHeight) / (maxHeight - minHeight);
-          normalizedHeightmap.push_back(normalizedHeight);
-          normalizedHeightmap.push_back(normalizedHeight);
-          normalizedHeightmap.push_back(normalizedHeight);
-        }
-      }
-
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, terrainParams.size,
-                   terrainParams.size, 0, GL_RGB, GL_FLOAT,
-                   normalizedHeightmap.data());
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        ImGui::SliderFloat("Noise Amplitude", &terrainParams.amplitude, 0.1f, 20.0f) ||
+        ImGui::SliderFloat("Noise Frequency", &terrainParams.frequency, 0.001f, 0.2f) ||
+        ImGui::SliderFloat("Noise Persistance", &terrainParams.persistance, 0.0f, 1.0f) ||
+        ImGui::SliderFloat("Noise Lacunarity", &terrainParams.lacunarity, 1.0f, 4.0f)) {
+      heightMapChanged = true;
+      terrain->updateParams(terrainParams);
     }
 
     const char *noiseTypes[] = {"Perlin", "Simplex", "Value"};
     int currentNoiseType = static_cast<int>(terrainParams.noiseType);
-    if (ImGui::Combo("Noise Type", &currentNoiseType, noiseTypes,
-                     sizeof(noiseTypes) / sizeof(noiseTypes[0]))) {
+    if (ImGui::Combo("Noise Type", &currentNoiseType, noiseTypes, sizeof(noiseTypes) / sizeof(char *))) {
+      heightMapChanged = true;
       terrainParams.noiseType = static_cast<NoiseType>(currentNoiseType);
-      delete terrain;
-      terrain = new Terrain(terrainParams);
+      terrain->updateParams(terrainParams);
+    }
 
+    if (heightMapChanged) {
       glBindTexture(GL_TEXTURE_2D, heightmapTexture);
 
       std::vector<float> normalizedHeightmap;
@@ -812,8 +793,7 @@ void gui() {
     ImGui::InputInt("Seed", (int *)&terrainParams.seed);
     if (ImGui::Button("Random Seed")) {
       terrainParams.seed = rand();
-      delete terrain;
-      terrain = new Terrain(terrainParams);
+      terrain->updateParams(terrainParams);
 
       float halfSize = terrainParams.size / 2.0f;
       float waterVertices[] = {-halfSize, 0.0f, -halfSize, 0.0f, 0.0f,
@@ -853,6 +833,16 @@ void gui() {
   }
 
   ImGui::End();
+
+  if (showCurveEditor) {
+    ImGui::SetNextWindowSize(ImVec2(500, 400), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Height Distribution Curve", &showCurveEditor);
+    if (ImGui::Curve("Height Distribution", ImVec2(480, 300), 10, curvePoints, &curveSelection, ImVec2(0, 0), ImVec2(1, 1))) {
+      terrainParams.curvePoints = curvePoints;
+      terrain->updateParams(terrainParams);
+    }
+    ImGui::End();
+  }
 }
 
 int main(int argc, char *argv[]) {

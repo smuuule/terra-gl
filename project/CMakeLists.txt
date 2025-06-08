@@ -16,6 +16,7 @@ add_executable ( ${PROJECT_NAME}
     terrain.cpp
     terrain.h
     noise.cpp
+    imgui_curve.hpp
     ${SHADERS}
     )
 

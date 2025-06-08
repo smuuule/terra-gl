@@ -10,7 +10,8 @@ Terrain::Terrain(const TerrainParams &params)
     : params(params), terrainModel(nullptr) {
   std::cout << "Generating terrain with size: " << params.size
             << ", heightScale: " << params.heightScale << std::endl;
-  generateTerrain();
+  generateHeightMap();
+  generateMeshFromHeightMap();
 }
 
 void Terrain::applyErosion(int iterations, float talusAngle) {
@@ -51,14 +52,7 @@ float Terrain::noise(int seed, float x, float z) {
   }
 }
 
-void Terrain::generateTerrain() {
-  terrainModel = new labhelper::Model();
-  terrainModel->m_name = "Terrain";
-  terrainModel->m_filename = "generated_terrain";
-
-  std::vector<std::vector<glm::vec3>> normalMap(
-      params.size, std::vector<glm::vec3>(params.size));
-
+void Terrain::generateHeightMap() {
   srand(params.seed);
   whiteNoise.resize(params.size, std::vector<float>(params.size));
   for (int x = 0; x < params.size; ++x) {
@@ -69,14 +63,40 @@ void Terrain::generateTerrain() {
 
   heightMap.resize(params.size, std::vector<float>(params.size));
 
+  float minHeight = FLT_MAX;
+  float maxHeight = -FLT_MAX;
   for (int z = 0; z < params.size; z++) {
     for (int x = 0; x < params.size; x++) {
-      heightMap[z][x] = noise(params.seed, x, z) * params.heightScale;
+      float rawNoise = noise(params.seed, x, z);
+      rawNoise = (rawNoise + 1.0f) * 0.5f;
+      heightMap[z][x] = rawNoise;
+      minHeight = std::min(minHeight, rawNoise);
+      maxHeight = std::max(maxHeight, rawNoise);
+    }
+  }
+
+  for (int z = 0; z < params.size; z++) {
+    for (int x = 0; x < params.size; x++) {
+      float normalizedHeight = (heightMap[z][x] - minHeight) / (maxHeight - minHeight);
+      float curvedHeight = normalizedHeight;
+      if (params.curvePoints != nullptr) {
+        curvedHeight = ImGui::CurveValueSmooth(normalizedHeight, 10, params.curvePoints);
+      }
+      heightMap[z][x] = curvedHeight * params.heightScale;
     }
   }
 
   if (params.erosion)
     applyErosion(params.erosionIterations, params.talusAngle);
+}
+
+void Terrain::generateMeshFromHeightMap() {
+  terrainModel = new labhelper::Model();
+  terrainModel->m_name = "Terrain";
+  terrainModel->m_filename = "generated_terrain";
+
+  std::vector<std::vector<glm::vec3>> normalMap(
+      params.size, std::vector<glm::vec3>(params.size));
 
   for (int z = 0; z < params.size; z++) {
     for (int x = 0; x < params.size; x++) {
@@ -162,7 +182,25 @@ void Terrain::generateTerrain() {
   terrainModel->m_meshes.push_back(mesh);
 }
 
+void Terrain::updateTerrainMesh() {
+  if (terrainModel != nullptr) {
+    delete terrainModel;
+  }
+  generateMeshFromHeightMap();
+}
+
+void Terrain::generateTerrain() {
+  generateHeightMap();
+  generateMeshFromHeightMap();
+}
+
 labhelper::Model *Terrain::getModel() const { return terrainModel; }
 std::vector<std::vector<float>> Terrain::getHeightMap() const {
   return heightMap;
+}
+
+void Terrain::updateParams(const TerrainParams &newParams) {
+  params = newParams;
+    generateHeightMap();
+    updateTerrainMesh();
 }
